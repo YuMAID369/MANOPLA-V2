@@ -1,0 +1,181 @@
+-- [[ MOTOR CORE V29 - BRUTE FORCE POSSESSION ]] --
+local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+local Player = Players.LocalPlayer
+local Character = Player.Character or Player.CharacterAdded:Wait()
+local RootPart = Character:WaitForChild("HumanoidRootPart")
+local Vehicles = workspace:WaitForChild("Vehicles", 5)
+
+-- CONFIGURAÇÕES TÉCNICAS
+local DIST_X, DIST_Y, DIST_Z = 28, 5, 12
+local ALTURA_SPAWN = 70 -- Aumentado para dar mais tempo de queda livre
+local sethid = sethiddenproperty or set_hidden_property
+
+local navioL, navioR = nil, nil
+local BP_L, BG_L, BP_R, BG_R = nil, nil, nil, nil
+local sistemaAtivo = false
+local atacando = false
+local ladoSoco = "Left"
+local sine = 0
+
+-- [[ 1. TOOL ]] --
+local Tool = Player.Backpack:FindFirstChild("⚙️ GARRAS MECÂNICAS") or Instance.new("Tool")
+Tool.Name = "⚙️ GARRAS MECÂNICAS"
+Tool.RequiresHandle = false
+Tool.Parent = Player.Backpack
+
+-- [[ 2. FUNÇÃO DE CAPTURA AGRESSIVA (LOOP DE POSSE) ]] --
+local function capturarComForcaBruta(obj)
+    if not obj then return nil, nil end
+    local part = obj.PrimaryPart or obj:FindFirstChild("Body") or obj:FindFirstChildWhichIsA("BasePart")
+    
+    -- Sub-função para limpar e travar
+    local function aplicarStatus()
+        for _, v in pairs(obj:GetDescendants()) do
+            if v:IsA("BasePart") then
+                v.Anchored = false
+                v.CanCollide = false
+                v.Massless = true
+                v.Velocity = Vector3.new(0,0,0)
+            elseif v:IsA("VehicleSeat") or v:IsA("Seat") then
+                v:Destroy()
+            end
+        end
+    end
+
+    -- Cria os controladores (BodyPosition/Gyro)
+    local bp = Instance.new("BodyPosition")
+    bp.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+    bp.P = 500000 -- Força extrema
+    bp.D = 2000   -- Amortecimento alto para estabilizar
+    bp.Parent = part
+
+    local bg = Instance.new("BodyGyro")
+    bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
+    bg.P = 300000
+    bg.Parent = part
+
+    -- O SEGREDO: Loop de possessão durante 3 segundos
+    task.spawn(function()
+        local tempoInicio = tick()
+        while tick() - tempoInicio < 3 do
+            aplicarStatus() -- Garante que o jogo não re-ancore o barco
+            pcall(function() 
+                part:SetNetworkOwner(Player) 
+            end)
+            RunService.Heartbeat:Wait() -- Tenta a cada frame do motor de física
+        end
+    end)
+    
+    return bp, bg
+end
+
+-- [[ 3. SPAWN AÉREO REFORÇADO ]] --
+local function spawnAereo()
+    local remote = ReplicatedStorage:FindFirstChild("RE") and ReplicatedStorage.RE:FindFirstChild("1Ca1r")
+    if not remote then return nil end
+
+    local oldCF = RootPart.CFrame
+    RootPart.CFrame = CFrame.new(1754, ALTURA_SPAWN, 58)
+    
+    -- Plataforma local para estabilidade do jogador
+    local p = Instance.new("Part", workspace)
+    p.Size = Vector3.new(15, 1, 15)
+    p.CFrame = RootPart.CFrame * CFrame.new(0, -3.5, 0)
+    p.Anchored, p.Transparency = true, 1
+
+    task.wait(0.5)
+    remote:FireServer("PickingBoat", "MilitaryBoatFree")
+    
+    local target = nil
+    for i = 1, 40 do
+        for _, v in pairs(Vehicles:GetChildren()) do
+            if v.Name:find(Player.Name) and v ~= navioL and v ~= navioR then
+                target = v; break
+            end
+        end
+        if target then break end
+        task.wait(0.1)
+    end
+    
+    p:Destroy()
+    RootPart.CFrame = oldCF
+    return target
+end
+
+-- [[ 4. INTERFACE ]] --
+local sg = Player.PlayerGui:FindFirstChild("ClawGui") or Instance.new("ScreenGui", Player.PlayerGui)
+sg.Name = "ClawGui"
+sg.ResetOnSpawn = false
+local frame = sg:FindFirstChild("Main") or Instance.new("Frame", sg)
+frame.Name = "Main"
+frame.Size = UDim2.new(0, 200, 0, 80)
+frame.Position = UDim2.new(0.02, 0, 0.4, 0)
+frame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+Instance.new("UICorner", frame)
+
+local btn = frame:FindFirstChild("Btn") or Instance.new("TextButton", frame)
+btn.Name = "Btn"
+btn.Size = UDim2.new(0.9, 0, 0.6, 0)
+btn.Position = UDim2.new(0.05, 0, 0.2, 0)
+btn.Text = "FORCE CLAW SPAWN"
+btn.Font = Enum.Font.GothamBlack
+btn.TextColor3 = Color3.new(1, 1, 1)
+btn.BackgroundColor3 = Color3.fromRGB(80, 0, 0)
+Instance.new("UICorner", btn)
+
+btn.MouseButton1Click:Connect(function()
+    if not sistemaAtivo then
+        sistemaAtivo = true
+        btn.Text = "CAPTURING..."
+        
+        navioL = spawnAereo()
+        if navioL then BP_L, BG_L = capturarComForcaBruta(navioL) end
+        task.wait(1.2)
+        navioR = spawnAereo()
+        if navioR then BP_R, BG_R = capturarComForcaBruta(navioR) end
+        
+        btn.Text = "SYSTEM ARMED"
+        btn.BackgroundColor3 = Color3.fromRGB(0, 120, 50)
+    else
+        sistemaAtivo = false
+        btn.Text = "FORCE CLAW SPAWN"
+        btn.BackgroundColor3 = Color3.fromRGB(80, 0, 0)
+        if navioL then navioL:Destroy(); navioL = nil end
+        if navioR then navioR:Destroy(); navioR = nil end
+        BP_L, BG_L, BP_R, BG_R = nil, nil, nil, nil
+    end
+end)
+
+-- [[ 5. LOOP DE MANUTENÇÃO ]] --
+RunService.Heartbeat:Connect(function()
+    if not sistemaAtivo then return end
+    if sethid then sethid(Player, "SimulationRadius", 2500) end
+    
+    sine = sine + 1
+    local bob = 2 * math.sin(sine/15)
+
+    if BP_L and BG_L then
+        local goal = (atacando and ladoSoco == "Left") and CFrame.new(-10, 0, -90) or CFrame.new(-DIST_X, DIST_Y + bob, DIST_Z)
+        local cf = RootPart.CFrame * goal
+        BP_L.Position = cf.Position
+        BG_L.CFrame = cf
+    end
+
+    if BP_R and BG_R then
+        local goal = (atacando and ladoSoco == "Right") and CFrame.new(10, 0, -90) or CFrame.new(DIST_X, DIST_Y + bob, DIST_Z)
+        local cf = RootPart.CFrame * goal
+        BP_R.Position = cf.Position
+        BG_R.CFrame = cf
+    end
+end)
+
+Tool.Activated:Connect(function()
+    if not sistemaAtivo or atacando then return end
+    atacando = true
+    task.wait(0.4)
+    ladoSoco = (ladoSoco == "Left") and "Right" or "Left"
+    atacando = false
+end)
