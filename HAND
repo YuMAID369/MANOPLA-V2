@@ -1,4 +1,4 @@
--- [[ MOTOR CORE V29 - BRUTE FORCE POSSESSION ]] --
+-- [[ MOTOR CORE V33 - UNIVERSAL CLAW OMNI-ADAPT ]] --
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -8,9 +8,11 @@ local Character = Player.Character or Player.CharacterAdded:Wait()
 local RootPart = Character:WaitForChild("HumanoidRootPart")
 local Vehicles = workspace:WaitForChild("Vehicles", 5)
 
--- CONFIGURAÇÕES TÉCNICAS
-local DIST_X, DIST_Y, DIST_Z = 28, 5, 12
-local ALTURA_SPAWN = 70 -- Aumentado para dar mais tempo de queda livre
+-- [[ CONFIGURAÇÕES GLOBAIS ]] --
+local BARCO_PARA_INVOCAR = "PirateFree" -- Altere para "MilitaryBoatFree", "SmallBoatFree", etc.
+local DIST_X, DIST_Y, DIST_Z = 28, 6, 12
+local ALTURA_SPAWN = 85
+local RAIO_CAMPO_FORCA = 28
 local sethid = sethiddenproperty or set_hidden_property
 
 local navioL, navioR = nil, nil
@@ -20,77 +22,110 @@ local atacando = false
 local ladoSoco = "Left"
 local sine = 0
 
--- [[ 1. TOOL ]] --
+-- [[ 1. TOOL DE CONTROLE ]] --
 local Tool = Player.Backpack:FindFirstChild("⚙️ GARRAS MECÂNICAS") or Instance.new("Tool")
 Tool.Name = "⚙️ GARRAS MECÂNICAS"
 Tool.RequiresHandle = false
 Tool.Parent = Player.Backpack
 
--- [[ 2. FUNÇÃO DE CAPTURA AGRESSIVA (LOOP DE POSSE) ]] --
-local function capturarComForcaBruta(obj)
+-- [[ 2. SISTEMA DE DEFESA (ANTI-ROUBO DE POSSE) ]] --
+local function repelirInvasores(obj)
+    if not obj or not obj.PrimaryPart then return end
+    for _, p in pairs(Players:GetPlayers()) do
+        if p ~= Player and p.Character and p.Character:FindFirstChild("HumanoidRootPart") then
+            local enemyRoot = p.Character.HumanoidRootPart
+            local dist = (obj.PrimaryPart.Position - enemyRoot.Position).Magnitude
+            if dist < RAIO_CAMPO_FORCA then
+                local pushDir = (enemyRoot.Position - obj.PrimaryPart.Position).Unit
+                enemyRoot.Velocity = pushDir * 70 + Vector3.new(0, 20, 0)
+            end
+        end
+    end
+end
+
+-- [[ 3. CAPTURA DE FÍSICA UNIVERSAL (BRUTE FORCE) ]] --
+local function configurarFisicaUniversal(obj)
     if not obj then return nil, nil end
-    local part = obj.PrimaryPart or obj:FindFirstChild("Body") or obj:FindFirstChildWhichIsA("BasePart")
     
-    -- Sub-função para limpar e travar
-    local function aplicarStatus()
+    -- Busca a peça principal (Casco) por volume para suportar qualquer modelo
+    local mainPart = obj.PrimaryPart
+    if not mainPart or mainPart.Name == "Handle" then
+        local biggestSize = 0
+        for _, p in pairs(obj:GetDescendants()) do
+            if p:IsA("BasePart") then
+                local vol = p.Size.X * p.Size.Y * p.Size.Z
+                if vol > biggestSize then
+                    biggestSize = vol
+                    mainPart = p
+                end
+            end
+        end
+    end
+    obj.PrimaryPart = mainPart
+
+    -- Limpeza Profunda (Remove scripts de flutuação e âncoras do servidor)
+    local function higienizar()
         for _, v in pairs(obj:GetDescendants()) do
             if v:IsA("BasePart") then
                 v.Anchored = false
                 v.CanCollide = false
                 v.Massless = true
                 v.Velocity = Vector3.new(0,0,0)
+                v.RotVelocity = Vector3.new(0,0,0)
             elseif v:IsA("VehicleSeat") or v:IsA("Seat") then
-                v:Destroy()
+                v.Disabled = true
+                v:SetAttribute("Occupant", nil)
+            elseif v:IsA("BodyForce") or v:IsA("BodyThrust") or v:IsA("BodyVelocity") then
+                v:Destroy() -- Deleta a física de água original
             end
         end
     end
 
-    -- Cria os controladores (BodyPosition/Gyro)
+    -- Controladores de Telekinesis (P e D otimizados para barcos pesados)
     local bp = Instance.new("BodyPosition")
     bp.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-    bp.P = 500000 -- Força extrema
-    bp.D = 2000   -- Amortecimento alto para estabilizar
-    bp.Parent = part
+    bp.P = 700000 
+    bp.D = 3000   
+    bp.Parent = mainPart
 
     local bg = Instance.new("BodyGyro")
     bg.MaxTorque = Vector3.new(math.huge, math.huge, math.huge)
-    bg.P = 300000
-    bg.Parent = part
+    bg.P = 500000
+    bg.D = 1000
+    bg.Parent = mainPart
 
-    -- O SEGREDO: Loop de possessão durante 3 segundos
+    -- Loop de Estabilização de Rede (Agressivo)
     task.spawn(function()
-        local tempoInicio = tick()
-        while tick() - tempoInicio < 3 do
-            aplicarStatus() -- Garante que o jogo não re-ancore o barco
-            pcall(function() 
-                part:SetNetworkOwner(Player) 
-            end)
-            RunService.Heartbeat:Wait() -- Tenta a cada frame do motor de física
+        local t = tick()
+        while tick() - t < 5 do
+            higienizar()
+            pcall(function() mainPart:SetNetworkOwner(Player) end)
+            RunService.Heartbeat:Wait()
         end
     end)
     
     return bp, bg
 end
 
--- [[ 3. SPAWN AÉREO REFORÇADO ]] --
-local function spawnAereo()
+-- [[ 4. SPAWN AÉREO OTIMIZADO ]] --
+local function realizarSpawnAereo()
     local remote = ReplicatedStorage:FindFirstChild("RE") and ReplicatedStorage.RE:FindFirstChild("1Ca1r")
     if not remote then return nil end
 
     local oldCF = RootPart.CFrame
-    RootPart.CFrame = CFrame.new(1754, ALTURA_SPAWN, 58)
+    -- Teleporte para o alto para evitar interferência da água no spawn
+    RootPart.CFrame = CFrame.new(1754, ALTURA_SPAWN, 58) 
     
-    -- Plataforma local para estabilidade do jogador
-    local p = Instance.new("Part", workspace)
-    p.Size = Vector3.new(15, 1, 15)
-    p.CFrame = RootPart.CFrame * CFrame.new(0, -3.5, 0)
-    p.Anchored, p.Transparency = true, 1
+    -- Plataforma local para o player não cair
+    local plat = Instance.new("Part", workspace)
+    plat.Size = Vector3.new(20, 1, 20); plat.CFrame = RootPart.CFrame * CFrame.new(0, -4, 0)
+    plat.Anchored, plat.Transparency = true, 1
 
-    task.wait(0.5)
-    remote:FireServer("PickingBoat", "MilitaryBoatFree")
+    task.wait(0.6)
+    remote:FireServer("PickingBoat", BARCO_PARA_INVOCAR)
     
     local target = nil
-    for i = 1, 40 do
+    for i = 1, 45 do
         for _, v in pairs(Vehicles:GetChildren()) do
             if v.Name:find(Player.Name) and v ~= navioL and v ~= navioR then
                 target = v; break
@@ -100,82 +135,86 @@ local function spawnAereo()
         task.wait(0.1)
     end
     
-    p:Destroy()
+    plat:Destroy()
     RootPart.CFrame = oldCF
     return target
 end
 
--- [[ 4. INTERFACE ]] --
-local sg = Player.PlayerGui:FindFirstChild("ClawGui") or Instance.new("ScreenGui", Player.PlayerGui)
-sg.Name = "ClawGui"
-sg.ResetOnSpawn = false
+-- [[ 5. INTERFACE (GUI) ]] --
+local sg = Player.PlayerGui:FindFirstChild("OmniClaw") or Instance.new("ScreenGui", Player.PlayerGui)
+sg.Name = "OmniClaw"; sg.ResetOnSpawn = false
+
 local frame = sg:FindFirstChild("Main") or Instance.new("Frame", sg)
 frame.Name = "Main"
-frame.Size = UDim2.new(0, 200, 0, 80)
-frame.Position = UDim2.new(0.02, 0, 0.4, 0)
-frame.BackgroundColor3 = Color3.fromRGB(10, 10, 10)
+frame.Size = UDim2.new(0, 220, 0, 90)
+frame.Position = UDim2.new(0.02, 0, 0.45, 0)
+frame.BackgroundColor3 = Color3.fromRGB(15, 15, 15)
 Instance.new("UICorner", frame)
 
 local btn = frame:FindFirstChild("Btn") or Instance.new("TextButton", frame)
 btn.Name = "Btn"
-btn.Size = UDim2.new(0.9, 0, 0.6, 0)
-btn.Position = UDim2.new(0.05, 0, 0.2, 0)
-btn.Text = "FORCE CLAW SPAWN"
-btn.Font = Enum.Font.GothamBlack
-btn.TextColor3 = Color3.new(1, 1, 1)
-btn.BackgroundColor3 = Color3.fromRGB(80, 0, 0)
+btn.Size = UDim2.new(0.9, 0, 0.7, 0); btn.Position = UDim2.new(0.05, 0, 0.15, 0)
+btn.Text = "ACTIVAR GARRAS UNIVERSAIS"
+btn.Font = Enum.Font.GothamBlack; btn.TextColor3 = Color3.new(1, 1, 1)
+btn.BackgroundColor3 = Color3.fromRGB(100, 0, 0)
 Instance.new("UICorner", btn)
 
 btn.MouseButton1Click:Connect(function()
     if not sistemaAtivo then
         sistemaAtivo = true
-        btn.Text = "CAPTURING..."
+        btn.Text = "CAPTURA AÉREA..."
         
-        navioL = spawnAereo()
-        if navioL then BP_L, BG_L = capturarComForcaBruta(navioL) end
-        task.wait(1.2)
-        navioR = spawnAereo()
-        if navioR then BP_R, BG_R = capturarComForcaBruta(navioR) end
+        navioL = realizarSpawnAereo()
+        if navioL then BP_L, BG_L = configurarFisicaUniversal(navioL) end
+        task.wait(1.5)
+        navioR = realizarSpawnAereo()
+        if navioR then BP_R, BG_R = configurarFisicaUniversal(navioR) end
         
-        btn.Text = "SYSTEM ARMED"
-        btn.BackgroundColor3 = Color3.fromRGB(0, 120, 50)
+        btn.Text = "SISTEMA OPERACIONAL"
+        btn.BackgroundColor3 = Color3.fromRGB(0, 150, 70)
     else
         sistemaAtivo = false
-        btn.Text = "FORCE CLAW SPAWN"
-        btn.BackgroundColor3 = Color3.fromRGB(80, 0, 0)
+        btn.Text = "ACTIVAR GARRAS UNIVERSAIS"
+        btn.BackgroundColor3 = Color3.fromRGB(100, 0, 0)
         if navioL then navioL:Destroy(); navioL = nil end
         if navioR then navioR:Destroy(); navioR = nil end
         BP_L, BG_L, BP_R, BG_R = nil, nil, nil, nil
     end
 end)
 
--- [[ 5. LOOP DE MANUTENÇÃO ]] --
+-- [[ 6. LOOP DE MANUTENÇÃO (HEARTBEAT) ]] --
 RunService.Heartbeat:Connect(function()
     if not sistemaAtivo then return end
-    if sethid then sethid(Player, "SimulationRadius", 2500) end
+    
+    -- Network Optimization
+    if sethid then sethid(Player, "SimulationRadius", 4000) end
     
     sine = sine + 1
-    local bob = 2 * math.sin(sine/15)
+    local bob = 2.5 * math.sin(sine/14)
 
+    -- Executa campo de força em cada navio
+    if navioL then repelirInvasores(navioL) end
+    if navioR then repelirInvasores(navioR) end
+
+    -- Cálculos de Posicionamento (Claw Alignment)
     if BP_L and BG_L then
-        local goal = (atacando and ladoSoco == "Left") and CFrame.new(-10, 0, -90) or CFrame.new(-DIST_X, DIST_Y + bob, DIST_Z)
-        local cf = RootPart.CFrame * goal
-        BP_L.Position = cf.Position
-        BG_L.CFrame = cf
+        local target = (atacando and ladoSoco == "Left") and CFrame.new(-12, 0, -95) or CFrame.new(-DIST_X, DIST_Y + bob, DIST_Z)
+        local cf = RootPart.CFrame * target
+        BP_L.Position = cf.Position; BG_L.CFrame = cf
     end
 
     if BP_R and BG_R then
-        local goal = (atacando and ladoSoco == "Right") and CFrame.new(10, 0, -90) or CFrame.new(DIST_X, DIST_Y + bob, DIST_Z)
-        local cf = RootPart.CFrame * goal
-        BP_R.Position = cf.Position
-        BG_R.CFrame = cf
+        local target = (atacando and ladoSoco == "Right") and CFrame.new(12, 0, -95) or CFrame.new(DIST_X, DIST_Y + bob, DIST_Z)
+        local cf = RootPart.CFrame * target
+        BP_R.Position = cf.Position; BG_R.CFrame = cf
     end
 end)
 
+-- [[ CONTROLE DE CLIQUE DA TOOL ]] --
 Tool.Activated:Connect(function()
     if not sistemaAtivo or atacando then return end
     atacando = true
-    task.wait(0.4)
+    task.wait(0.45)
     ladoSoco = (ladoSoco == "Left") and "Right" or "Left"
     atacando = false
 end)
